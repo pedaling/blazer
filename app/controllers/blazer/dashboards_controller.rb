@@ -2,10 +2,6 @@ module Blazer
   class DashboardsController < BaseController
     before_action :set_dashboard, only: [:show, :edit, :update, :destroy, :refresh]
 
-    def index
-      redirect_to root_path(filter: "dashboards")
-    end
-
     def new
       @dashboard = Blazer::Dashboard.new
     end
@@ -25,8 +21,11 @@ module Blazer
 
     def show
       @queries = @dashboard.dashboard_queries.order(:position).preload(:query).map(&:query)
+      @statements = []
       @queries.each do |query|
-        process_vars(query.statement, query.data_source)
+        statement = query.statement.dup
+        process_vars(statement, query.data_source)
+        @statements << statement
       end
       @bind_vars ||= []
 
@@ -40,6 +39,8 @@ module Blazer
           @sql_errors << error if error
         end
       end
+
+      add_cohort_analysis_vars if @queries.any?(&:cohort_analysis?)
     end
 
     def edit
@@ -47,7 +48,7 @@ module Blazer
 
     def update
       if update_dashboard(@dashboard)
-        redirect_to dashboard_path(@dashboard, variable_params)
+        redirect_to dashboard_path(@dashboard, variable_params(@dashboard))
       else
         render_errors @dashboard
       end
@@ -55,7 +56,7 @@ module Blazer
 
     def destroy
       @dashboard.destroy
-      redirect_to dashboards_path
+      redirect_to root_path
     end
 
     def refresh
@@ -66,7 +67,7 @@ module Blazer
         Blazer.transform_statement.call(data_source, statement) if Blazer.transform_statement
         data_source.clear_cache(statement)
       end
-      redirect_to dashboard_path(@dashboard, variable_params)
+      redirect_to dashboard_path(@dashboard, variable_params(@dashboard))
     end
 
     private

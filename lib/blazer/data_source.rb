@@ -4,24 +4,13 @@ module Blazer
   class DataSource
     extend Forwardable
 
-    attr_reader :id, :settings, :adapter, :adapter_instance
+    attr_reader :id, :settings
 
-    def_delegators :adapter_instance, :schema, :tables, :preview_statement, :reconnect, :cost, :explain, :cancel
+    def_delegators :adapter_instance, :schema, :tables, :preview_statement, :reconnect, :cost, :explain, :cancel, :supports_cohort_analysis?, :cohort_analysis_statement
 
     def initialize(id, settings)
       @id = id
       @settings = settings
-
-      unless settings["url"] || Rails.env.development? || ["bigquery", "athena"].include?(settings["adapter"])
-        raise Blazer::Error, "Empty url for data source: #{id}"
-      end
-
-      @adapter_instance =
-        if Blazer.adapters[adapter]
-          Blazer.adapters[adapter].new(self)
-        else
-          raise Blazer::Error, "Unknown adapter"
-        end
     end
 
     def adapter
@@ -101,7 +90,6 @@ module Blazer
     end
 
     def run_statement(statement, options = {})
-      run_id = options[:run_id]
       async = options[:async]
       result = nil
       if cache_mode != "off"
@@ -154,9 +142,24 @@ module Blazer
 
     protected
 
+    def adapter_instance
+      @adapter_instance ||= begin
+        # TODO add required settings to adapters
+        unless settings["url"] || Rails.env.development? || ["bigquery", "athena", "snowflake", "salesforce"].include?(settings["adapter"])
+          raise Blazer::Error, "Empty url for data source: #{id}"
+        end
+
+        unless Blazer.adapters[adapter]
+          raise Blazer::Error, "Unknown adapter"
+        end
+
+        Blazer.adapters[adapter].new(self)
+      end
+    end
+
     def run_statement_helper(statement, comment, run_id)
       start_time = Time.now
-      columns, rows, error = @adapter_instance.run_statement(statement, comment)
+      columns, rows, error = adapter_instance.run_statement(statement, comment)
       duration = Time.now - start_time
 
       cache_data = nil
@@ -165,7 +168,7 @@ module Blazer
         cache_data = Marshal.dump([columns, rows, error, cache ? Time.now : nil]) rescue nil
       end
 
-      if cache && cache_data && @adapter_instance.cachable?(statement)
+      if cache && cache_data && adapter_instance.cachable?(statement)
         Blazer.cache.write(statement_cache_key(statement), cache_data, expires_in: cache_expires_in.to_f * 60)
       end
 
@@ -180,11 +183,12 @@ module Blazer
       Blazer::Result.new(self, columns, rows, error, nil, cache && !cache_data.nil?)
     end
 
+    # TODO check for adapter with same name, default to sql
     def detect_adapter
-      schema = settings["url"].to_s.split("://").first
-      case schema
-      when "mongodb", "presto"
-        schema
+      scheme = settings["url"].to_s.split("://").first
+      case scheme
+      when "mongodb", "presto", "cassandra", "ignite"
+        scheme
       else
         "sql"
       end

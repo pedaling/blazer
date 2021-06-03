@@ -1,8 +1,8 @@
-<% if @dashboard.errors.any? %>
-  <div class="alert alert-danger"><%= @dashboard.errors.full_messages.first %></div>
-<% end %>
+<%= form_for @dashboard, url: (@dashboard.persisted? ? dashboard_path(@dashboard, variable_params(@dashboard)) : dashboards_path(variable_params(@dashboard))), html: {id: "app", class: "small-form"} do |f| %>
+  <% if @dashboard.errors.any? %>
+    <div class="alert alert-danger"><%= @dashboard.errors.full_messages.first %></div>
+  <% end %>
 
-<%= form_for @dashboard, url: (@dashboard.persisted? ? dashboard_path(@dashboard, variable_params) : dashboards_path(variable_params)), html: {id: "app"} do |f| %>
   <div class="form-group">
     <%= f.label :name %>
     <%= f.text_field :name, class: "form-control" %>
@@ -31,7 +31,7 @@
 <% end %>
 
 <script>
-  <%= blazer_js_var "queries", Blazer::Query.named.order(:name).select("id, name").map { |q| {text: q.name, value: q.id} } %>
+  <%= blazer_js_var "queries", Blazer::Query.active.named.order(:name).select("id, name").map { |q| {text: q.name, value: q.id} } %>
   <%= blazer_js_var "dashboardQueries", @queries || @dashboard.dashboard_queries.order(:position).map(&:query) %>
 
   var app = new Vue({

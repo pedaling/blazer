@@ -52,6 +52,9 @@ function runQueryHelper(query) {
   }).fail( function(jqXHR, textStatus, errorThrown) {
     if (!query.canceled) {
       var message = (typeof errorThrown === "string") ? errorThrown : errorThrown.message
+      if (!message) {
+        message = "An error occurred"
+      }
       query.error(message)
     }
     queryComplete(query)
@@ -80,7 +83,7 @@ function cancelAllQueries() {
   }
 }
 
-$(window).unload(cancelAllQueries)
+$(window).on("unload", cancelAllQueries)
 
 function cancelQuery(query) {
   query.canceled = true
@@ -92,7 +95,7 @@ function cancelQuery(query) {
   var path = Routes.cancel_queries_path()
   var data = {run_id: query.run_id, data_source: query.data_source}
   if (navigator.sendBeacon) {
-    navigator.sendBeacon(path, csrfProtect(data))
+    navigator.sendBeacon(path + "?" + $.param(csrfProtect(data)))
   } else {
     // TODO make sync
     $.post(path, data)
@@ -103,5 +106,5 @@ function csrfProtect(payload) {
   var param = $("meta[name=csrf-param]").attr("content")
   var token = $("meta[name=csrf-token]").attr("content")
   if (param && token) payload[param] = token
-  return new Blob([JSON.stringify(payload)], {type : "application/json; charset=utf-8"})
+  return payload
 }
